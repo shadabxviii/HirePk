@@ -40,9 +40,10 @@ const Register = () => {
     }
   };
 
-  const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/api/auth/google";
-  };
+const handleGoogleLogin = () => {
+  window.location.href =
+    `${import.meta.env.VITE_API_URL}/api/auth/google`;
+};
 
   return (
     <PublicLayout>
