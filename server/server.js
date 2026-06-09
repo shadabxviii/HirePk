@@ -49,12 +49,16 @@ app.use(
 
 // CORS Policy Configuration
 const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  // FIX: Live Vercel URL aur localhost dono ko direct allow kar diya
+  origin: ["https://hire-pk.vercel.app", "http://localhost:5173"],
   credentials: true, // Crucial to allow cookie transit
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 };
+
 app.use(cors(corsOptions));
+// Yeh line preflight requests (jo network tab mein 204 aa rahi thin) unko handle karegi
+app.options("*", cors(corsOptions));
 
 // General Middlewares
 app.use(morgan("dev"));
