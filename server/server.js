@@ -22,6 +22,8 @@ import applicationRoutes from "./routes/application.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import companyRoutes from "./routes/company.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
+
 
 // Setup path helpers for static folder serving in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +75,7 @@ app.use("/api/applications", applicationRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Base Test API Route
 app.get("/", (req, res) => {

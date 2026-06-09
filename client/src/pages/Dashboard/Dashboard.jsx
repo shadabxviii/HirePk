@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 import SeekerDashboard from "./SeekerDashboard";
 import EmployerDashboard from "./EmployerDashboard";
+import AdminDashboard from "./AdminDashboard";
 import PublicLayout from "../../components/templates/PublicLayout";
 import Spinner from "../../components/atoms/Spinner";
 
@@ -32,7 +33,13 @@ const Dashboard = () => {
 
   return (
     <PublicLayout>
-      {user?.role === "employer" ? <EmployerDashboard /> : <SeekerDashboard />}
+      {user?.role === "admin" ? (
+        <AdminDashboard />
+      ) : user?.role === "employer" ? (
+        <EmployerDashboard />
+      ) : (
+        <SeekerDashboard />
+      )}
     </PublicLayout>
   );
 };
