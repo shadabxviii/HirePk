@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/authStore";
 import Input from "../components/atoms/Input";
 import Button from "../components/atoms/Button";
 import PublicLayout from "../components/templates/PublicLayout";
+import { getApiBaseUrl } from "../services/api";
 
 const Login = () => {
   const { login } = useAuthStore();
@@ -34,10 +35,10 @@ const Login = () => {
     }
   };
 
-const handleGoogleLogin = () => {
-  window.location.href =
-    `${import.meta.env.VITE_API_URL}/api/auth/google`;
-};
+  const handleGoogleLogin = () => {
+    const base = getApiBaseUrl().replace(/\/api$/, "");
+    window.location.href = `${base}/api/auth/google`;
+  };
 
   return (
     <PublicLayout>

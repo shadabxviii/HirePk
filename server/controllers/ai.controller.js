@@ -1,4 +1,7 @@
-import { askGroq } from "../utils/groq.js";
+import { askAI } from "../services/ai.service.js";
+import { analyzeJobMatchWithFallback, buildResumeContext } from "../services/resume.service.js";
+import { normalizeSkills } from "../utils/skillNormalizer.js";
+import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 
@@ -8,24 +11,28 @@ import ApiResponse from "../utils/ApiResponse.js";
  */
 export const reviewResume = async (req, res, next) => {
   try {
-    const { resumeText } = req.body;
+    let { resumeText } = req.body;
+
     if (!resumeText) {
-      throw new ApiError(400, "Resume text content is required for review.");
+      const user = await User.findById(req.user._id);
+      resumeText = buildResumeContext(user);
+    }
+
+    if (!resumeText) {
+      throw new ApiError(400, "Resume text is required. Upload a PDF resume or paste text.");
     }
 
     const systemPrompt = `
-      You are an expert ATS (Applicant Tracking System) recruiter and technical career coach in Pakistan.
-      Review the provided resume text and give a highly detailed, professional feedback report.
-      Break down your response into the following clear Markdown sections:
+      You are an expert ATS recruiter and career coach in Pakistan.
+      Review the provided resume and give detailed professional feedback in Markdown:
       1. Overall Score (out of 100)
-      2. Strengths (what is done well)
+      2. Strengths
       3. Key Weaknesses & Missing Details
       4. ATS Compatibility Suggestions
-      5. Practical recommendations to improve formatting/content for the Pakistani market.
-      Keep the tone encouraging, professional, and highly actionable.
+      5. Practical recommendations for the Pakistani market.
     `;
 
-    const result = await askGroq(systemPrompt, `Resume Text:\n${resumeText}`);
+    const result = await askAI(systemPrompt, `Resume Text:\n${resumeText}`);
 
     return res
       .status(200)
@@ -42,29 +49,29 @@ export const reviewResume = async (req, res, next) => {
 export const generateCoverLetter = async (req, res, next) => {
   try {
     const { jobDescription, seekerProfile } = req.body;
-    if (!jobDescription || !seekerProfile) {
-      throw new ApiError(400, "Both Job Description and Seeker Profile/Resume are required.");
+    if (!jobDescription) {
+      throw new ApiError(400, "Job Description is required.");
+    }
+
+    let profileText = seekerProfile;
+    if (!profileText) {
+      const user = await User.findById(req.user._id);
+      profileText = buildResumeContext(user);
+    }
+
+    if (!profileText) {
+      throw new ApiError(400, "Seeker profile or resume is required.");
     }
 
     const systemPrompt = `
-      You are an expert career writer. Write a premium, highly tailored cover letter based on the provided Job Description and Job Seeker profile.
-      The cover letter must:
-      - Highlight how the candidate's skills directly align with the requirements.
-      - Have a professional, engaging opening and closing.
-      - Mention localization details if appropriate.
-      - Be fully formatted with placeholders for contact information.
-      Do not include any conversational preamble or postscript in your response; return ONLY the cover letter.
+      Write a premium, tailored cover letter for the Pakistani job market.
+      Return ONLY the cover letter — no preamble.
     `;
 
-    const userMessage = `
-      Job Description:
-      ${jobDescription}
-      
-      Candidate Profile:
-      ${seekerProfile}
-    `;
-
-    const result = await askGroq(systemPrompt, userMessage);
+    const result = await askAI(
+      systemPrompt,
+      `Job Description:\n${jobDescription}\n\nCandidate Profile:\n${profileText}`
+    );
 
     return res
       .status(200)
@@ -75,60 +82,33 @@ export const generateCoverLetter = async (req, res, next) => {
 };
 
 /**
- * AI Job Match Score & Gap Analyzer
+ * AI Job Match Score with rule-based fallback
  * POST /api/ai/match-score
  */
 export const analyzeJobMatch = async (req, res, next) => {
   try {
-    const { resumeText, jobDescription } = req.body;
-    if (!resumeText || !jobDescription) {
-      throw new ApiError(400, "Both Resume text and Job Description are required for match scoring.");
+    let { resumeText, jobDescription } = req.body;
+
+    if (!jobDescription) {
+      throw new ApiError(400, "Job Description is required for match scoring.");
     }
 
-    const systemPrompt = `
-      You are an AI recruiter. Compare the candidate's resume with the job description.
-      You must respond in a valid JSON format only. Do not include any markdown, markdown block wrapper, or explanation outside of the JSON object.
-      The JSON structure MUST be exactly:
-      {
-        "matchPercentage": 75,
-        "matchingSkills": ["Skill A", "Skill B"],
-        "missingSkills": ["Skill C", "Skill D"],
-        "criticalGapsExplanation": "Brief explanation of gaps...",
-        "recommendations": ["Action item A", "Action item B"]
-      }
-      Analyze carefully and accurately.
-    `;
+    const user = await User.findById(req.user._id);
+    const userSkills = user?.profile?.skills || [];
 
-    const userMessage = `
-      Resume:
-      ${resumeText}
-      
-      Job Description:
-      ${jobDescription}
-    `;
-
-    const responseText = await askGroq(systemPrompt, userMessage);
-    
-    // Parse response
-    let parsedResult;
-    try {
-      // Handle potential model output wrappers (e.g. ```json ... ```)
-      const cleanJsonString = responseText
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
-      parsedResult = JSON.parse(cleanJsonString);
-    } catch (e) {
-      console.warn("Failed to parse JSON from Groq, falling back to regex extraction:", e);
-      // Fallback fallback if JSON parse fails
-      parsedResult = {
-        matchPercentage: 50,
-        matchingSkills: [],
-        missingSkills: [],
-        criticalGapsExplanation: "AI parsing error. Please review manually.",
-        recommendations: []
-      };
+    if (!resumeText) {
+      resumeText = buildResumeContext(user);
     }
+
+    if (!resumeText) {
+      throw new ApiError(400, "Resume text or profile data is required. Upload a PDF resume first.");
+    }
+
+    const parsedResult = await analyzeJobMatchWithFallback(
+      resumeText,
+      jobDescription,
+      userSkills
+    );
 
     return res
       .status(200)
@@ -150,20 +130,14 @@ export const generateInterviewPrep = async (req, res, next) => {
     }
 
     const systemPrompt = `
-      You are an elite interviewer. Generate 10 highly likely interview questions (5 technical, 5 behavioral) for a candidate applying for the given role.
-      For each question:
-      - Include the Question
-      - Provide a "Why this is asked" insight
-      - Provide a "Key points to include in your answer" tip
-      Format the output in a clean, readable Markdown layout with clear headings. Include a concluding motivational note for the candidate.
+      Generate 10 interview questions (5 technical, 5 behavioral) for the given role.
+      Format in clean Markdown with question, why it's asked, and answer tips.
     `;
 
-    const userMessage = `
-      Job Role: ${jobRole}
-      ${jobDescription ? `Job Description:\n${jobDescription}` : ""}
-    `;
-
-    const result = await askGroq(systemPrompt, userMessage);
+    const result = await askAI(
+      systemPrompt,
+      `Job Role: ${jobRole}\n${jobDescription ? `Job Description:\n${jobDescription}` : ""}`
+    );
 
     return res
       .status(200)
@@ -174,35 +148,25 @@ export const generateInterviewPrep = async (req, res, next) => {
 };
 
 /**
- * AI Job Description (JD) Writer
+ * AI Job Description Writer
  * POST /api/ai/write-jd
- * Private: Employer only
  */
 export const writeJobDescription = async (req, res, next) => {
   try {
     const { jobTitle, companyName, keyRequirements } = req.body;
     if (!jobTitle) {
-      throw new ApiError(400, "Job title is required to draft a job description.");
+      throw new ApiError(400, "Job title is required.");
     }
 
     const systemPrompt = `
-      You are an expert HR manager. Write a professional, attractive, and complete Job Description (JD) suitable for Pakistani job portals.
-      Include sections:
-      1. Job Overview
-      2. Key Responsibilities
-      3. Requirements & Qualifications (incorporating any user provided key requirements)
-      4. Skills Needed (Technical & Soft Skills)
-      5. Benefits & Perks
-      Tone should be professional, clear, and represent the company values. Return the output in Markdown.
+      Write a professional Job Description for Pakistani job portals in Markdown.
+      Include: Overview, Responsibilities, Requirements, Skills, Benefits.
     `;
 
-    const userMessage = `
-      Job Title: ${jobTitle}
-      Company: ${companyName || "Our Company"}
-      Key requirements from employer: ${keyRequirements || "Standard requirements"}
-    `;
-
-    const result = await askGroq(systemPrompt, userMessage);
+    const result = await askAI(
+      systemPrompt,
+      `Job Title: ${jobTitle}\nCompany: ${companyName || "Our Company"}\nRequirements: ${keyRequirements || "Standard"}`
+    );
 
     return res
       .status(200)
@@ -218,27 +182,33 @@ export const writeJobDescription = async (req, res, next) => {
  */
 export const analyzeSkillsGap = async (req, res, next) => {
   try {
-    const { userSkills, targetIndustry } = req.body;
+    let { userSkills, targetIndustry } = req.body;
+
     if (!userSkills) {
-      throw new ApiError(400, "User skills are required.");
+      const user = await User.findById(req.user._id);
+      userSkills = [
+        ...(user?.profile?.skills || []),
+        ...(user?.profile?.parsedResume?.skills || []),
+      ];
     }
 
+    if (!userSkills || (Array.isArray(userSkills) && userSkills.length === 0)) {
+      throw new ApiError(400, "User skills are required. Upload a resume or add skills to your profile.");
+    }
+
+    const skillsStr = Array.isArray(userSkills)
+      ? normalizeSkills(userSkills).join(", ")
+      : userSkills;
+
     const systemPrompt = `
-      You are an IT industry career advisor in Pakistan.
-      Analyze the candidate's skills against current market demands in the specified target industry (or general IT if unspecified).
-      List:
-      1. High-demand skills in Pakistan for this industry.
-      2. The gaps in the candidate's current skillset.
-      3. Learning path recommendation (free courses, certifications, projects they should build).
-      Format the output in clean, encouraging Markdown.
+      Analyze skills against Pakistani market demands. Format in encouraging Markdown.
+      Cover: high-demand skills, gaps, and learning path recommendations.
     `;
 
-    const userMessage = `
-      Candidate Skills: ${Array.isArray(userSkills) ? userSkills.join(", ") : userSkills}
-      Target Industry: ${targetIndustry || "General Information Technology"}
-    `;
-
-    const result = await askGroq(systemPrompt, userMessage);
+    const result = await askAI(
+      systemPrompt,
+      `Candidate Skills: ${skillsStr}\nTarget Industry: ${targetIndustry || "General IT"}`
+    );
 
     return res
       .status(200)

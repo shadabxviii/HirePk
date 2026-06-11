@@ -10,9 +10,28 @@ const userSchema = new mongoose.Schema({
   profile: {
     headline: String,
     bio: String,
-    skills: [{ type: String, trim: true }],
+    skills: [{ type: String, trim: true, lowercase: true }],
     resumeUrl: String,
     resumePublicId: String,
+    resumeText: String,
+    parsedResume: {
+      skills: [{ type: String, trim: true, lowercase: true }],
+      education: [{
+        degree: String,
+        institution: String,
+        year: String
+      }],
+      experience: [{
+        title: String,
+        company: String,
+        duration: String,
+        description: String
+      }],
+      headline: String,
+      summary: String,
+      parsedAt: Date,
+      parseSource: { type: String, enum: ["ai", "rule-based", "rule-based-fallback"], default: "rule-based" }
+    },
     audioPitchUrl: String,
     city: { type: String, default: "" },
     area: { type: String, default: "" },

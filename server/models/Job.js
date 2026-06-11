@@ -25,7 +25,7 @@ const jobSchema = new mongoose.Schema({
     currency: { type: String, default: "PKR" },
     negotiable: { type: Boolean, default: false }
   },
-  skillsRequired: [{ type: String, trim: true }],
+  skillsRequired: [{ type: String, trim: true, lowercase: true }],
   experienceLevel: { type: String, enum: ["entry", "mid", "senior"], default: "entry" },
   deadline: Date,
   status: { type: String, enum: ["active", "closed", "draft"], default: "active" },

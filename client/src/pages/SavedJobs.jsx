@@ -12,8 +12,8 @@ const SavedJobs = () => {
   const fetchSaved = async () => {
     setIsLoading(true);
     try {
-      const response = await getSavedJobs();
-      setJobs(response.data || []);
+      const savedJobs = await getSavedJobs();
+      setJobs(Array.isArray(savedJobs) ? savedJobs : []);
     } catch (err) {
       console.error(err);
     } finally {

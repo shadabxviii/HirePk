@@ -13,12 +13,17 @@ const connectDB = async () => {
       throw new Error("MONGODB_URI is not defined in your environment variables!");
     }
 
-    // FIX: dbName options ke andar lazmi pass karein
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      dbName: "MY_DATABASE", // <--- Yeh line aapka data website par wapas le aayegi
-      connectTimeoutMS: 30000, 
+    const connectOptions = {
+      connectTimeoutMS: 30000,
       socketTimeoutMS: 45000,
-    });
+    };
+
+    // Use explicit db name only when provided via env (otherwise URI default applies)
+    if (process.env.MONGODB_DB_NAME) {
+      connectOptions.dbName = process.env.MONGODB_DB_NAME;
+    }
+
+    const conn = await mongoose.connect(process.env.MONGODB_URI, connectOptions);
 
     console.log(`MongoDB Connected Successfully to: ${conn.connection.name} on ${conn.connection.host}`);
     
@@ -29,3 +34,6 @@ const connectDB = async () => {
 };
 
 export default connectDB;
+
+
+

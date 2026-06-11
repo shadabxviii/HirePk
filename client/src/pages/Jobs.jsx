@@ -27,6 +27,35 @@ const Jobs = () => {
   const experienceLevel = searchParams.get("experienceLevel") || "All";
   const page = parseInt(searchParams.get("page") || "1");
 
+  // FIX 1: Local state search input ke liye taake input lag-free rahe
+  const [localSearch, setLocalSearch] = useState(search);
+
+  // FIX 2: Agar URL manually clear ho ya change ho, toh local state sync rahe
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  // FIX 3: Debounce logic — 500ms wait karega type rukne ka, phir URL update karega
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      const newParams = new URLSearchParams(searchParams);
+      if (localSearch) {
+        newParams.set("search", localSearch);
+      } else {
+        newParams.delete("search");
+      }
+      newParams.set("page", "1"); // Search badalne par page 1 par reset ho
+
+      // Sirf tabhi URL update ho jab actual mein data badla ho (infinite loop se bachne ke liye)
+      if (searchParams.get("search") !== newParams.get("search") || newParams.get("page") === "1" && searchParams.get("page") !== "1") {
+         setSearchParams(newParams);
+      }
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [localSearch]);
+
+  // Main API call mechanism (unaffected and clean)
   useEffect(() => {
     const fetchJobsData = async () => {
       setIsLoading(true);
@@ -69,6 +98,7 @@ const Jobs = () => {
   };
 
   const clearAllFilters = () => {
+    setLocalSearch(""); // Local search bhi clear karein
     setSearchParams({});
     setShowMobileFilters(false);
   };
@@ -177,8 +207,9 @@ const Jobs = () => {
             <Search className="w-5 h-5 text-slate-400 flex-shrink-0" />
             <input
               type="text"
-              value={search}
-              onChange={(e) => updateParam("search", e.target.value)}
+              // FIX 4: Bind value with local state instead of raw url search param
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
               placeholder="Search job titles, keywords, skills..."
               className="w-full bg-transparent text-sm text-slate-700 focus:outline-none placeholder:text-slate-400"
             />

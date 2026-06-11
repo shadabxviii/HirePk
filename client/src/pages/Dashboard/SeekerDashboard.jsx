@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { User, FileText, Bookmark, Send, Sparkles, Phone, MapPin, Upload, Briefcase, Plus, CheckCircle, Volume2 } from "lucide-react";
 import { getProfile, updateProfile, uploadResumeFile, uploadAudioPitchFile, getSavedJobs } from "../../services/userService";
 import { getMyApplications } from "../../services/applicationService";
@@ -38,13 +39,13 @@ const SeekerDashboard = () => {
       setIsLoading(true);
       try {
         const profile = await getProfile();
-        updateProfileState(profile.data);
-        
+        updateProfileState(profile);
+
         const apps = await getMyApplications();
-        setApplications(apps.data || []);
+        setApplications(Array.isArray(apps) ? apps : []);
 
         const bookmarks = await getSavedJobs();
-        setSavedJobs(bookmarks.data || []);
+        setSavedJobs(Array.isArray(bookmarks) ? bookmarks : []);
       } catch (err) {
         console.error("Dashboard data load failed:", err);
       } finally {
@@ -70,7 +71,7 @@ const SeekerDashboard = () => {
         linkedin,
         github
       });
-      updateProfileState(response.data);
+      updateProfileState(response);
       setSuccessMsg("Profile details updated successfully!");
     } catch (err) {
       alert("Failed to update profile: " + err.message);
@@ -92,8 +93,15 @@ const SeekerDashboard = () => {
       const response = await uploadResumeFile(formData);
       // Fetch latest profile to sync
       const profile = await getProfile();
-      updateProfileState(profile.data);
-      setSuccessMsg("Resume uploaded successfully!");
+      updateProfileState(profile);
+      if (response?.skillsExtracted?.length) {
+        setSkills(response.skillsExtracted.join(", "));
+      }
+      setSuccessMsg(
+        response?.parseSource === "ai"
+          ? "Resume uploaded and AI-parsed successfully! Skills auto-filled."
+          : "Resume uploaded successfully!"
+      );
     } catch (err) {
       alert("Resume upload failed: " + err.message);
     } finally {
@@ -113,7 +121,7 @@ const SeekerDashboard = () => {
     try {
       const response = await uploadAudioPitchFile(formData);
       const profile = await getProfile();
-      updateProfileState(profile.data);
+      updateProfileState(profile);
       setSuccessMsg("Audio pitch uploaded successfully!");
     } catch (err) {
       alert("Audio pitch upload failed: " + err.message);

@@ -32,5 +32,10 @@ export const getMyListings = async () => {
 
 export const saveOrUnsaveJob = async (id) => {
   const response = await API.post(`/jobs/${id}/save`);
-  return response.data; // contains { saved: true/false }
+  return response.data; // { saved: true/false }
+};
+
+export const getMatchedJobs = async (params = {}) => {
+  const response = await API.get("/jobs/matched", { params });
+  return response.data;
 };

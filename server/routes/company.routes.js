@@ -13,6 +13,9 @@ import { validateRequest } from "../middleware/validate.middleware.js";
 
 const router = Router();
 
+// Protected routes (Employer only) — /my before /:id
+router.get("/my", protect, authorizeRoles("employer"), getMyCompany);
+
 // Public routes
 router.get("/:id", getCompanyById);
 
@@ -49,7 +52,5 @@ router.put(
   ],
   updateMyCompany
 );
-
-router.get("/my", protect, authorizeRoles("employer"), getMyCompany);
 
 export default router;

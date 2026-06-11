@@ -25,6 +25,14 @@ export const deleteAdminUser = async (userId) => {
 };
 
 /**
+ * Fetch all applications
+ */
+export const getAdminApplications = async () => {
+  const response = await API.get("/admin/applications");
+  return response.data;
+};
+
+/**
  * Fetch all posted jobs
  */
 export const getAdminJobs = async () => {

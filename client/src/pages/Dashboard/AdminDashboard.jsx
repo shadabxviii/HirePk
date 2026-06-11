@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { 
   Users, 
   Briefcase, 
@@ -20,7 +21,8 @@ import {
   deleteAdminUser, 
   getAdminJobs, 
   updateAdminJobStatus, 
-  deleteAdminJob 
+  deleteAdminJob,
+  getAdminApplications
 } from "../../services/adminService";
 import Button from "../../components/atoms/Button";
 import Badge from "../../components/atoms/Badge";
@@ -36,6 +38,7 @@ const AdminDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [users, setUsers] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [applications, setApplications] = useState([]);
 
   // Action loading states
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -45,13 +48,16 @@ const AdminDashboard = () => {
     setErrorMsg("");
     try {
       const analyticRes = await getAdminAnalytics();
-      setAnalytics(analyticRes.data);
+      setAnalytics(analyticRes);
 
       const userRes = await getAdminUsers();
-      setUsers(userRes.data || []);
+      setUsers(Array.isArray(userRes) ? userRes : []);
 
       const jobRes = await getAdminJobs();
-      setJobs(jobRes.data || []);
+      setJobs(Array.isArray(jobRes) ? jobRes : []);
+
+      const appRes = await getAdminApplications();
+      setApplications(Array.isArray(appRes) ? appRes : []);
     } catch (err) {
       console.error("Failed to load admin dashboard data:", err);
       setErrorMsg("Failed to load administrative data.");
@@ -77,11 +83,13 @@ const AdminDashboard = () => {
       setSuccessMsg(`User "${userName}" was deleted successfully.`);
       // Reload lists
       const userRes = await getAdminUsers();
-      setUsers(userRes.data || []);
+      setUsers(Array.isArray(userRes) ? userRes : []);
       const analyticRes = await getAdminAnalytics();
-      setAnalytics(analyticRes.data);
+      setAnalytics(analyticRes);
       const jobRes = await getAdminJobs();
-      setJobs(jobRes.data || []);
+      setJobs(Array.isArray(jobRes) ? jobRes : []);
+      const appRes = await getAdminApplications();
+      setApplications(Array.isArray(appRes) ? appRes : []);
     } catch (err) {
       setErrorMsg(err.message || "Failed to delete user.");
     } finally {
@@ -102,9 +110,9 @@ const AdminDashboard = () => {
       await updateAdminJobStatus(jobId, nextStatus);
       setSuccessMsg(`Job listing "${title}" status updated to ${nextStatus}.`);
       const jobRes = await getAdminJobs();
-      setJobs(jobRes.data || []);
+      setJobs(Array.isArray(jobRes) ? jobRes : []);
       const analyticRes = await getAdminAnalytics();
-      setAnalytics(analyticRes.data);
+      setAnalytics(analyticRes);
     } catch (err) {
       setErrorMsg(err.message || "Failed to update job status.");
     } finally {
@@ -124,9 +132,9 @@ const AdminDashboard = () => {
       await deleteAdminJob(jobId);
       setSuccessMsg(`Job listing "${title}" was deleted.`);
       const jobRes = await getAdminJobs();
-      setJobs(jobRes.data || []);
+      setJobs(Array.isArray(jobRes) ? jobRes : []);
       const analyticRes = await getAdminAnalytics();
-      setAnalytics(analyticRes.data);
+      setAnalytics(analyticRes);
     } catch (err) {
       setErrorMsg(err.message || "Failed to delete job.");
     } finally {
@@ -203,6 +211,15 @@ const AdminDashboard = () => {
             }`}
           >
             <Briefcase className="w-4.5 h-4.5" /> Manage Jobs ({jobs.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("applications")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-left transition-colors cursor-pointer ${
+              activeTab === "applications" ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10" : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Send className="w-4.5 h-4.5" /> Applications ({applications.length})
           </button>
         </div>
 
@@ -344,6 +361,44 @@ const AdminDashboard = () => {
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "applications" && (
+            <div className="glass-panel p-6 rounded-3xl border border-slate-100 bg-white shadow-sm flex flex-col gap-4">
+              <h3 className="font-extrabold text-slate-800 text-base">All Job Applications</h3>
+              {applications.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 text-xs">No applications found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <th className="py-3 px-4">Applicant</th>
+                        <th className="py-3 px-4">Job</th>
+                        <th className="py-3 px-4">City</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Applied</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applications.map((app) => (
+                        <tr key={app._id} className="border-b border-slate-50 text-xs hover:bg-slate-50/50 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-700">{app.applicant?.name}</td>
+                          <td className="py-3.5 px-4 text-slate-500">{app.job?.title}</td>
+                          <td className="py-3.5 px-4 text-slate-400">{app.job?.location?.city || "—"}</td>
+                          <td className="py-3.5 px-4 capitalize">
+                            <Badge variant="outline">{app.status}</Badge>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-400">
+                            {new Date(app.appliedAt).toLocaleDateString("en-PK")}
                           </td>
                         </tr>
                       ))}

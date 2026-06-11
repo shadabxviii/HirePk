@@ -40,18 +40,18 @@ const EmployerDashboard = () => {
     setIsLoading(true);
     try {
       const listData = await getMyListings();
-      setListings(listData.data || []);
-      
+      setListings(Array.isArray(listData) ? listData : []);
+
       const compData = await getMyCompany();
-      if (compData.data) {
-        setCompany(compData.data);
-        setCompanyName(compData.data.name || "");
-        setWebsite(compData.data.website || "");
-        setIndustry(compData.data.industry || "");
-        setSize(compData.data.size || "1-10");
-        setCity(compData.data.city || "");
-        setArea(compData.data.area || "");
-        setDescription(compData.data.description || "");
+      if (compData) {
+        setCompany(compData);
+        setCompanyName(compData.name || "");
+        setWebsite(compData.website || "");
+        setIndustry(compData.industry || "");
+        setSize(compData.size || "1-10");
+        setCity(compData.city || "");
+        setArea(compData.area || "");
+        setDescription(compData.description || "");
       }
     } catch (err) {
       console.warn("Failed to load employer dashboard data:", err);
@@ -83,7 +83,7 @@ const EmployerDashboard = () => {
 
     try {
       const response = await updateMyCompany(formData);
-      setCompany(response.data);
+      setCompany(response);
       setSuccessMsg("Company profile updated successfully!");
     } catch (err) {
       alert("Failed to update company: " + err.message);
@@ -99,7 +99,7 @@ const EmployerDashboard = () => {
     setIsApplicantsLoading(true);
     try {
       const response = await getApplicantsForJob(jobId);
-      setApplicants(response.data || []);
+      setApplicants(Array.isArray(response) ? response : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -110,9 +110,8 @@ const EmployerDashboard = () => {
   const handleUpdateStatus = async (appId, newStatus) => {
     try {
       await updateApplicationStatus(appId, newStatus);
-      // Refresh lists
       const response = await getApplicantsForJob(selectedJobId);
-      setApplicants(response.data || []);
+      setApplicants(Array.isArray(response) ? response : []);
     } catch (err) {
       alert("Failed to update status: " + err.message);
     }

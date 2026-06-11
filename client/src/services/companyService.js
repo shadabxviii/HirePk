@@ -2,7 +2,7 @@ import API from "./api";
 
 export const getMyCompany = async () => {
   const response = await API.get("/companies/my");
-  return response;
+  return response.data;
 };
 
 export const updateMyCompany = async (formData) => {
@@ -11,10 +11,10 @@ export const updateMyCompany = async (formData) => {
       "Content-Type": "multipart/form-data"
     }
   });
-  return response;
+  return response.data;
 };
 
 export const getCompanyById = async (id) => {
   const response = await API.get(`/companies/${id}`);
-  return response;
+  return response.data;
 };

@@ -7,7 +7,8 @@ import {
   updateJob, 
   deleteJob, 
   getMyListings, 
-  saveOrUnsaveJob 
+  saveOrUnsaveJob,
+  getMatchedJobs
 } from "../controllers/job.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
@@ -17,13 +18,16 @@ const router = Router();
 
 // Public routes
 router.get("/", getJobs);
-router.get("/:id", getJobById);
+
+// Protected routes — static paths MUST come before /:id
+router.get("/matched", protect, authorizeRoles("jobseeker"), getMatchedJobs);
+router.get("/my/listings", protect, authorizeRoles("employer"), getMyListings);
 
 // Protected routes (Jobseeker only)
 router.post("/:id/save", protect, authorizeRoles("jobseeker"), saveOrUnsaveJob);
 
-// Protected routes (Employer only)
-router.get("/my/listings", protect, authorizeRoles("employer"), getMyListings);
+// Public dynamic route (after static paths)
+router.get("/:id", getJobById);
 
 router.post(
   "/",

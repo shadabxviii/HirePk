@@ -158,6 +158,25 @@ export const updateJobStatus = async (req, res, next) => {
 };
 
 /**
+ * Get all applications in the system
+ * GET /api/admin/applications
+ */
+export const getAllApplications = async (req, res, next) => {
+  try {
+    const applications = await Application.find()
+      .populate("job", "title location category status")
+      .populate("applicant", "name email avatar profile.city")
+      .sort({ appliedAt: -1 });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, applications, "All applications retrieved successfully."));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Delete a job listing
  * DELETE /api/admin/jobs/:id
  */

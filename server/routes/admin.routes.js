@@ -5,7 +5,8 @@ import {
   deleteUser, 
   getAllJobs, 
   updateJobStatus, 
-  deleteJob 
+  deleteJob,
+  getAllApplications
 } from "../controllers/admin.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
@@ -20,6 +21,7 @@ router.get("/analytics", getAnalytics);
 router.get("/users", getAllUsers);
 router.delete("/users/:id", deleteUser);
 
+router.get("/applications", getAllApplications);
 router.get("/jobs", getAllJobs);
 router.patch("/jobs/:id/status", updateJobStatus);
 router.delete("/jobs/:id", deleteJob);

@@ -3,14 +3,14 @@ import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import configureCloudinary from "../config/cloudinary.js";
+import { processResumeUpload } from "../services/resume.service.js";
+import { normalizeSkills } from "../utils/skillNormalizer.js";
 
-// Initialize Cloudinary configuration
 const cloudinary = configureCloudinary();
 
 /**
  * Get current user profile details
  * GET /api/users/profile
- * Private
  */
 export const getProfile = async (req, res, next) => {
   try {
@@ -26,22 +26,21 @@ export const getProfile = async (req, res, next) => {
 /**
  * Update current user profile details
  * PUT /api/users/profile
- * Private
  */
 export const updateProfile = async (req, res, next) => {
   try {
-    const { 
-      name, 
-      avatar, 
-      headline, 
-      bio, 
-      skills, 
-      city, 
-      area, 
-      phone, 
-      linkedin, 
-      github, 
-      portfolio 
+    const {
+      name,
+      avatar,
+      headline,
+      bio,
+      skills,
+      city,
+      area,
+      phone,
+      linkedin,
+      github,
+      portfolio
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -49,7 +48,6 @@ export const updateProfile = async (req, res, next) => {
     if (name) user.name = name;
     if (avatar) user.avatar = avatar;
 
-    // Build the profile subdocument
     if (!user.profile) user.profile = {};
 
     if (headline !== undefined) user.profile.headline = headline;
@@ -59,9 +57,9 @@ export const updateProfile = async (req, res, next) => {
     if (phone !== undefined) user.profile.phone = phone;
 
     if (skills !== undefined) {
-      user.profile.skills = Array.isArray(skills) 
-        ? skills 
-        : skills ? skills.split(",").map(s => s.trim()) : [];
+      user.profile.skills = normalizeSkills(
+        Array.isArray(skills) ? skills : skills ? skills.split(",") : []
+      );
     }
 
     if (!user.profile.socials) user.profile.socials = {};
@@ -84,7 +82,6 @@ export const updateProfile = async (req, res, next) => {
 /**
  * Get all bookmarked jobs
  * GET /api/users/saved-jobs
- * Private: Seeker only
  */
 export const getSavedJobs = async (req, res, next) => {
   try {
@@ -102,40 +99,43 @@ export const getSavedJobs = async (req, res, next) => {
 };
 
 /**
- * Upload PDF Resume
+ * Upload PDF Resume — extracts text, AI-parses, saves to profile
  * POST /api/users/upload-resume
- * Private: Seeker only
  */
 export const uploadResume = async (req, res, next) => {
+  const localFilePath = req.file?.path;
+
   try {
     if (!req.file) {
-      throw new ApiError(400, "Please upload a valid file.");
+      throw new ApiError(400, "Please upload a valid PDF file.");
     }
 
-    const localFilePath = req.file.path;
     const user = await User.findById(req.user._id);
     if (!user.profile) user.profile = {};
 
+    // Step 1: Extract text and parse resume BEFORE uploading (need local file)
+    let resumeData;
+    try {
+      resumeData = await processResumeUpload(localFilePath);
+    } catch (parseErr) {
+      console.error("[Resume] PDF processing error:", parseErr.message);
+      throw new ApiError(400, parseErr.message || "Failed to process resume PDF.");
+    }
+
+    // Step 2: Upload file to storage
     let fileUrl = "";
     let publicId = "";
 
     if (cloudinary) {
       try {
-        // Upload to Cloudinary
         const uploadResult = await cloudinary.uploader.upload(localFilePath, {
           folder: "hirepk/resumes",
           resource_type: "auto"
         });
-        
+
         fileUrl = uploadResult.secure_url;
         publicId = uploadResult.public_id;
 
-        // Clean up local temp file
-        if (fs.existsSync(localFilePath)) {
-          fs.unlinkSync(localFilePath);
-        }
-
-        // Delete old resume from Cloudinary if existed
         if (user.profile.resumePublicId) {
           await cloudinary.uploader.destroy(user.profile.resumePublicId);
         }
@@ -144,11 +144,9 @@ export const uploadResume = async (req, res, next) => {
         throw new ApiError(500, "Failed to upload resume to Cloudinary. Please try again.");
       }
     } else {
-      // Local fallback url (serve locally)
       const host = req.get("host");
       fileUrl = `${req.protocol}://${host}/uploads/${req.file.filename}`;
-      
-      // Clean up previous local file if exists
+
       if (user.profile.resumeUrl && user.profile.resumeUrl.includes("/uploads/")) {
         const oldFileName = user.profile.resumeUrl.split("/uploads/")[1];
         const oldFilePath = `./uploads/${oldFileName}`;
@@ -158,27 +156,61 @@ export const uploadResume = async (req, res, next) => {
       }
     }
 
-    // Save details to user record
+    // Step 3: Save extracted data to MongoDB
     user.profile.resumeUrl = fileUrl;
     if (publicId) user.profile.resumePublicId = publicId;
+    user.profile.resumeText = resumeData.resumeText;
+
+    user.profile.parsedResume = {
+      ...resumeData.parsedResume,
+      parsedAt: resumeData.parsedAt,
+      parseSource: resumeData.parseSource,
+    };
+
+    // Merge parsed skills into profile skills (deduplicated)
+    const mergedSkills = normalizeSkills([
+      ...(user.profile.skills || []),
+      ...(resumeData.parsedResume.skills || []),
+    ]);
+    user.profile.skills = mergedSkills;
+
+    if (resumeData.parsedResume.headline && !user.profile.headline) {
+      user.profile.headline = resumeData.parsedResume.headline;
+    }
+    if (resumeData.parsedResume.summary && !user.profile.bio) {
+      user.profile.bio = resumeData.parsedResume.summary;
+    }
+
     await user.save();
 
-    return res
-      .status(200)
-      .json(new ApiResponse(200, { resumeUrl: fileUrl }, "Resume uploaded successfully."));
+    // Clean up local temp file after successful processing
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          resumeUrl: fileUrl,
+          skillsExtracted: mergedSkills,
+          parsedResume: user.profile.parsedResume,
+          parseSource: resumeData.parseSource,
+        },
+        "Resume uploaded and parsed successfully."
+      )
+    );
   } catch (error) {
-    // Make sure to clean up local files on errors
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
     }
     next(error);
   }
 };
 
 /**
- * Upload Audio Pitch (1-Minute Pitch)
+ * Upload Audio Pitch
  * POST /api/users/upload-pitch
- * Private: Seeker only
  */
 export const uploadAudioPitch = async (req, res, next) => {
   try {
@@ -196,9 +228,9 @@ export const uploadAudioPitch = async (req, res, next) => {
       try {
         const uploadResult = await cloudinary.uploader.upload(localFilePath, {
           folder: "hirepk/pitches",
-          resource_type: "video" // Audio is classified as video category under Cloudinary API
+          resource_type: "video"
         });
-        
+
         audioUrl = uploadResult.secure_url;
 
         if (fs.existsSync(localFilePath)) {
@@ -226,4 +258,3 @@ export const uploadAudioPitch = async (req, res, next) => {
     next(error);
   }
 };
-

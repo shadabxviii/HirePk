@@ -86,8 +86,14 @@ const JobDetail = () => {
       return;
     }
 
-    if (!user?.profile?.resumeUrl && !user?.profile?.bio && (!user?.profile?.skills || user?.profile?.skills.length === 0)) {
-      alert("Please add skills or resume in your Profile first so the AI can compare.");
+    const hasResumeData =
+      user?.profile?.resumeText ||
+      user?.profile?.parsedResume?.skills?.length ||
+      user?.profile?.skills?.length ||
+      user?.profile?.bio;
+
+    if (!hasResumeData) {
+      alert("Please upload a resume or add skills in your Profile so the AI can compare.");
       return;
     }
 
@@ -95,16 +101,21 @@ const JobDetail = () => {
     setMatchResult(null);
 
     try {
-      const skillsStr = user.profile.skills ? user.profile.skills.join(", ") : "";
-      const profileText = `
-        Name: ${user.name}
-        Headline: ${user.profile.headline || ""}
-        Skills: ${skillsStr}
-        Bio: ${user.profile.bio || ""}
-      `;
-      
+      const resumeText =
+        user.profile.resumeText ||
+        [
+          `Name: ${user.name}`,
+          user.profile.headline && `Headline: ${user.profile.headline}`,
+          user.profile.skills?.length && `Skills: ${user.profile.skills.join(", ")}`,
+          user.profile.parsedResume?.experience?.length &&
+            `Experience: ${user.profile.parsedResume.experience.map((e) => `${e.title} at ${e.company}`).join("; ")}`,
+          user.profile.bio && `Bio: ${user.profile.bio}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
       const analysis = await analyzeJobMatchPercent(
-        profileText, 
+        resumeText,
         `Role: ${job.title}\nRequirements: ${job.skillsRequired?.join(", ")}\nDescription: ${job.description}`
       );
       setMatchResult(analysis);

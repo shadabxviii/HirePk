@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const getBaseURL = () => {
+export const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
@@ -12,7 +12,7 @@ const getBaseURL = () => {
 };
 
 const API = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: getApiBaseUrl(),
   withCredentials: true, // Crucial for cookie transmission
 });
 

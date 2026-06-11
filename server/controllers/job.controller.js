@@ -3,30 +3,37 @@ import Company from "../models/Company.js";
 import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
+import { normalizeSkills } from "../utils/skillNormalizer.js";
+import { findJobsForUser } from "../services/jobMatching.service.js";
+
+const parseSkillsInput = (skillsRequired) => {
+  if (Array.isArray(skillsRequired)) return normalizeSkills(skillsRequired);
+  if (typeof skillsRequired === "string" && skillsRequired.trim()) {
+    return normalizeSkills(skillsRequired.split(","));
+  }
+  return [];
+};
 
 /**
  * Post a new Job/Internship
  * POST /api/jobs
- * Private: Employer only
  */
 export const createJob = async (req, res, next) => {
   try {
-    const { 
-      title, 
-      description, 
-      category, 
-      type, 
-      city, 
-      area, 
-      minSalary, 
-      maxSalary, 
-      skillsRequired, 
-      experienceLevel, 
-      deadline 
+    const {
+      title,
+      description,
+      category,
+      type,
+      city,
+      area,
+      minSalary,
+      maxSalary,
+      skillsRequired,
+      experienceLevel,
+      deadline
     } = req.body;
 
-    // Check if employer has a registered company.
-    // If not, auto-create a default company profile to prevent user blockages.
     let company = await Company.findOne({ owner: req.user._id });
     if (!company) {
       company = await Company.create({
@@ -36,10 +43,6 @@ export const createJob = async (req, res, next) => {
         description: "Default company profile created on job posting."
       });
     }
-
-    const parsedSkills = Array.isArray(skillsRequired) 
-      ? skillsRequired 
-      : skillsRequired ? skillsRequired.split(",").map(s => s.trim()) : [];
 
     const job = await Job.create({
       title,
@@ -54,7 +57,7 @@ export const createJob = async (req, res, next) => {
         max: maxSalary,
         currency: "PKR"
       },
-      skillsRequired: parsedSkills,
+      skillsRequired: parseSkillsInput(skillsRequired),
       experienceLevel,
       deadline
     });
@@ -70,81 +73,101 @@ export const createJob = async (req, res, next) => {
 };
 
 /**
+ * Build search query with regex (more reliable than $text for partial matches)
+ */
+const buildJobSearchQuery = (filters) => {
+  const { search, city, category, type, experienceLevel, minSalary, skills } = filters;
+  const query = { status: "active" };
+
+  if (search && search.trim()) {
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const searchRegex = new RegExp(escaped, "i");
+    query.$or = [
+      { title: searchRegex },
+      { description: searchRegex },
+      { skillsRequired: searchRegex },
+      { "location.city": searchRegex },
+      { "location.area": searchRegex }
+    ];
+  }
+
+  if (city && city !== "All") {
+    query["location.city"] = { $regex: new RegExp(city, "i") };
+  }
+
+  if (category && category !== "All") {
+    query.category = category;
+  }
+
+  if (type && type !== "All") {
+    query.type = type;
+  }
+
+  if (experienceLevel && experienceLevel !== "All") {
+    query.experienceLevel = experienceLevel;
+  }
+
+  if (minSalary) {
+    query["salary.min"] = { $gte: Number(minSalary) };
+  }
+
+  if (skills) {
+    const skillList = normalizeSkills(
+      Array.isArray(skills) ? skills : skills.split(",")
+    );
+    if (skillList.length > 0) {
+      query.skillsRequired = { $in: skillList };
+    }
+  }
+
+  return query;
+};
+
+/**
  * Get all Jobs with Search, Filters and Pagination
  * GET /api/jobs
- * Public
  */
 export const getJobs = async (req, res, next) => {
   try {
-    const { 
-      search, 
-      city, 
-      category, 
-      type, 
-      experienceLevel, 
+    const {
+      search,
+      city,
+      category,
+      type,
+      experienceLevel,
       minSalary,
+      skills,
       page = 1,
-      limit = 10 
+      limit = 10
     } = req.query;
 
-    const query = { status: "active" };
-
-    // 1. Full-text search
-    if (search) {
-      query.$text = { $search: search };
-    }
-
-    // 2. City filter
-    if (city) {
-      query["location.city"] = { $regex: new RegExp(city, "i") };
-    }
-
-    // 3. Category filter
-    if (category && category !== "All") {
-      query.category = category;
-    }
-
-    // 4. Job Type filter (e.g. full-time, remote)
-    if (type && type !== "All") {
-      query.type = type;
-    }
-
-    // 5. Experience Level filter
-    if (experienceLevel && experienceLevel !== "All") {
-      query.experienceLevel = experienceLevel;
-    }
-
-    // 6. Minimum Salary filter
-    if (minSalary) {
-      query["salary.min"] = { $gte: Number(minSalary) };
-    }
+    const query = buildJobSearchQuery({
+      search, city, category, type, experienceLevel, minSalary, skills
+    });
 
     const skipIndex = (Number(page) - 1) * Number(limit);
-
-    // Get matching jobs count
     const totalJobs = await Job.countDocuments(query);
 
-    // Fetch jobs
     const jobs = await Job.find(query)
       .populate("company", "name logo city industry size")
       .sort({ createdAt: -1 })
       .skip(skipIndex)
       .limit(Number(limit));
 
-    const totalPages = Math.ceil(totalJobs / Number(limit));
+    const totalPages = Math.ceil(totalJobs / Number(limit)) || 1;
 
     return res.status(200).json(
       new ApiResponse(
-        200, 
-        { 
-          jobs, 
+        200,
+        {
+          jobs,
           pagination: {
             totalJobs,
             totalPages,
             currentPage: Number(page),
             limit: Number(limit)
-          } 
-        }, 
+          }
+        },
         "Jobs retrieved successfully."
       )
     );
@@ -154,22 +177,44 @@ export const getJobs = async (req, res, next) => {
 };
 
 /**
- * Get a single Job by ID & increment views count
+ * Get jobs matched to the logged-in seeker's skills
+ * GET /api/jobs/matched
+ */
+export const getMatchedJobs = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const userSkills = [
+      ...(user?.profile?.skills || []),
+      ...(user?.profile?.parsedResume?.skills || []),
+    ];
+
+    const { page = 1, limit = 10, city, category } = req.query;
+
+    const result = await findJobsForUser(userSkills, { page, limit, city, category });
+
+    return res.status(200).json(
+      new ApiResponse(200, result, "Matched jobs retrieved successfully.")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get a single Job by ID
  * GET /api/jobs/:id
- * Public
  */
 export const getJobById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Retrieve job and increment views in single call
     const job = await Job.findByIdAndUpdate(
-      id, 
-      { $inc: { views: 1 } }, 
+      id,
+      { $inc: { views: 1 } },
       { new: true }
     )
-    .populate("company", "name logo website size industry city area description verified")
-    .populate("postedBy", "name email avatar");
+      .populate("company", "name logo website size industry city area description verified")
+      .populate("postedBy", "name email avatar");
 
     if (!job) {
       throw new ApiError(404, "Job listing not found.");
@@ -186,7 +231,6 @@ export const getJobById = async (req, res, next) => {
 /**
  * Update an existing Job
  * PUT /api/jobs/:id
- * Private: Employer only (Owner of the job listing)
  */
 export const updateJob = async (req, res, next) => {
   try {
@@ -197,29 +241,28 @@ export const updateJob = async (req, res, next) => {
       throw new ApiError(404, "Job listing not found.");
     }
 
-    // Check ownership
     if (job.postedBy.toString() !== req.user._id.toString()) {
       throw new ApiError(403, "You do not have permissions to modify this job.");
     }
 
-    const { 
-      title, 
-      description, 
-      category, 
-      type, 
-      city, 
-      area, 
-      minSalary, 
-      maxSalary, 
-      skillsRequired, 
-      experienceLevel, 
+    const {
+      title,
+      description,
+      category,
+      type,
+      city,
+      area,
+      minSalary,
+      maxSalary,
+      skillsRequired,
+      experienceLevel,
       status,
-      deadline 
+      deadline
     } = req.body;
 
-    const parsedSkills = Array.isArray(skillsRequired) 
-      ? skillsRequired 
-      : skillsRequired ? skillsRequired.split(",").map(s => s.trim()) : job.skillsRequired;
+    const parsedSkills = skillsRequired !== undefined
+      ? parseSkillsInput(skillsRequired)
+      : job.skillsRequired;
 
     const updatedJob = await Job.findByIdAndUpdate(
       id,
@@ -253,7 +296,6 @@ export const updateJob = async (req, res, next) => {
 /**
  * Delete a Job listing
  * DELETE /api/jobs/:id
- * Private: Employer only (Owner of the job listing)
  */
 export const deleteJob = async (req, res, next) => {
   try {
@@ -264,7 +306,6 @@ export const deleteJob = async (req, res, next) => {
       throw new ApiError(404, "Job listing not found.");
     }
 
-    // Check ownership
     if (job.postedBy.toString() !== req.user._id.toString()) {
       throw new ApiError(403, "You do not have permissions to delete this job.");
     }
@@ -282,7 +323,6 @@ export const deleteJob = async (req, res, next) => {
 /**
  * Retrieve listings posted by the logged-in Employer
  * GET /api/jobs/my/listings
- * Private: Employer only
  */
 export const getMyListings = async (req, res, next) => {
   try {
@@ -301,7 +341,6 @@ export const getMyListings = async (req, res, next) => {
 /**
  * Toggle bookmark/saving a job
  * POST /api/jobs/:id/save
- * Private: Job Seeker only
  */
 export const saveOrUnsaveJob = async (req, res, next) => {
   try {
@@ -312,23 +351,25 @@ export const saveOrUnsaveJob = async (req, res, next) => {
     }
 
     const user = await User.findById(req.user._id);
-    const isAlreadySaved = user.savedJobs.includes(id);
+    const isAlreadySaved = user.savedJobs.some(
+      (savedId) => savedId.toString() === id
+    );
 
     if (isAlreadySaved) {
-      // Remove job from list
-      user.savedJobs = user.savedJobs.filter(savedId => savedId.toString() !== id);
+      user.savedJobs = user.savedJobs.filter(
+        (savedId) => savedId.toString() !== id
+      );
       await user.save();
       return res
         .status(200)
         .json(new ApiResponse(200, { saved: false }, "Job removed from saved list."));
-    } else {
-      // Add job to list
-      user.savedJobs.push(id);
-      await user.save();
-      return res
-        .status(200)
-        .json(new ApiResponse(200, { saved: true }, "Job bookmarked successfully."));
     }
+
+    user.savedJobs.push(id);
+    await user.save();
+    return res
+      .status(200)
+      .json(new ApiResponse(200, { saved: true }, "Job bookmarked successfully."));
   } catch (error) {
     next(error);
   }

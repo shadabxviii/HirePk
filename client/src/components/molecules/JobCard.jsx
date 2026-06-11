@@ -22,8 +22,8 @@ const JobCard = ({ job, onBookmarkToggle }) => {
     setIsSaving(true);
     try {
       const response = await saveOrUnsaveJob(job._id);
-      setIsSaved(response.data.saved);
-      if (onBookmarkToggle) onBookmarkToggle(job._id, response.data.saved);
+      setIsSaved(response.saved);
+      if (onBookmarkToggle) onBookmarkToggle(job._id, response.saved);
     } catch (error) {
       console.error("Bookmark failed:", error);
     } finally {
