@@ -8,7 +8,7 @@ export const getApiBaseUrl = () => {
     const url = import.meta.env.VITE_API_URL;
     return url.endsWith("/api") ? url : `${url}/api`;
   }
-  return "http://localhost:5000/api";
+  return "http://localhost:8000/api";
 };
 
 const API = axios.create({

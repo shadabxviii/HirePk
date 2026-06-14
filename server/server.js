@@ -51,14 +51,17 @@ app.use(
 
 // CORS Policy Configuration
 const allowedOrigins = [
+  "https://hirepk.vercel.app",
   "https://hire-pk.vercel.app",
   "http://localhost:5173",
+  "http://localhost:3000",
   process.env.CLIENT_URL,
-].filter(Boolean);
+].map(url => url && url.replace(/\/$/, "")).filter(Boolean);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const normalizedOrigin = origin ? origin.replace(/\/$/, "") : null;
+    if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS blocked for origin: ${origin}`));
@@ -66,7 +69,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
 };
 
 app.use(cors(corsOptions));
