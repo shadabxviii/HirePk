@@ -11,17 +11,11 @@ const useAuthStore = create((set, get) => ({
   // Set auth state from external source (like Google OAuth callback token)
   setToken: (token) => {
     localStorage.setItem("token", token);
-    API.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     set({ token, isAuthenticated: true });
   },
 
   // Check if user session is valid on application boot
   checkAuth: async () => {
-    const token = get().token;
-    if (token) {
-      API.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    }
-
     set({ isLoading: true, error: null });
     try {
       // Fetch profile from server
@@ -34,7 +28,6 @@ const useAuthStore = create((set, get) => ({
     } catch (err) {
       console.warn("Session check failed, clearing token:", err.message);
       localStorage.removeItem("token");
-      delete API.defaults.headers.common["Authorization"];
       set({ 
         user: null, 
         token: null, 
@@ -52,7 +45,6 @@ const useAuthStore = create((set, get) => ({
       const { user, token } = response.data;
       
       localStorage.setItem("token", token);
-      API.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       
       set({ 
         user, 
@@ -75,7 +67,6 @@ const useAuthStore = create((set, get) => ({
       const { user, token } = response.data;
 
       localStorage.setItem("token", token);
-      API.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
       set({ 
         user, 
@@ -104,7 +95,6 @@ const useAuthStore = create((set, get) => ({
       console.error("Logout request failed, clearing local state anyway:", err);
     } finally {
       localStorage.removeItem("token");
-      delete API.defaults.headers.common["Authorization"];
       set({ 
         user: null, 
         token: null, 

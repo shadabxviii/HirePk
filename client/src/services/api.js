@@ -16,6 +16,20 @@ const API = axios.create({
   withCredentials: true, // Crucial for cookie transmission
 });
 
+// Request interceptor to dynamically inject authorization token
+API.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Response interceptor to format errors cleanly
 API.interceptors.response.use(
   (response) => response.data,
